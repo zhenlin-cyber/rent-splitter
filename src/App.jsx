@@ -129,7 +129,7 @@ export default function RentSplitter() {
       await signOut();
       showNotification('Signed out');
     } catch (err) {
-      showNotification(err?.message || 'Sign out failed');
+      showNotification(err?.message || 'Sign out failed', 'error');
       console.error(err);
     }
   };
@@ -241,7 +241,7 @@ export default function RentSplitter() {
           }
         } catch (err) {
           console.error('Failed to load splits from Firestore', err);
-          showNotification('Failed to load saved splits');
+          showNotification('Failed to load saved splits', 'error');
           loadLocal();
         }
       };
@@ -312,8 +312,8 @@ export default function RentSplitter() {
     saveToLocal();
   }, [expenses, roommates, savedSplits, profiles]);
 
-  const showNotification = (msg) => {
-    setNotification(msg);
+  const showNotification = (msg, type = 'success') => {
+    setNotification({ msg, type });
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -396,12 +396,12 @@ export default function RentSplitter() {
 
   const confirmSaveSplit = async () => {
     console.log('confirmSaveSplit called', { user, db, newSplitData });
-    if (!newSplitData.name.trim()) return showNotification('Please enter a split name');
+    if (!newSplitData.name.trim()) return showNotification('Please enter a split name', 'error');
 
     const nameNorm = newSplitData.name.trim().toLowerCase();
     // Local duplicate check
     const existsLocal = savedSplits.some(s => s.name && s.name.trim().toLowerCase() === nameNorm);
-    if (existsLocal) return showNotification('A split with that name already exists');
+    if (existsLocal) return showNotification('A split with that name already exists', 'error');
 
     const newSplit = {
       name: newSplitData.name,
@@ -422,7 +422,7 @@ export default function RentSplitter() {
           const snap = await getDocs(q);
           if (!snap.empty) {
             setIsSavingSplit(false);
-            return showNotification('A split with that name already exists');
+            return showNotification('A split with that name already exists', 'error');
           }
 
           console.log('attempting remote save to Firestore', { uid: user.uid });
@@ -431,11 +431,12 @@ export default function RentSplitter() {
           const saved = { id: docRef.id, ...newSplit };
           setSavedSplits(prev => [saved, ...prev]);
           setIsSaveModalOpen(false);
+          setView('splits');
           showNotification(`Saved to ${newSplitData.category}`);
           return;
         } catch (err) {
           console.error('Failed to save split to Firestore', err);
-          showNotification('Failed to save split remotely — saved locally instead');
+          showNotification('Failed to save split remotely — saved locally instead', 'error');
           // fallthrough to local save
         }
       } else {
@@ -446,6 +447,7 @@ export default function RentSplitter() {
       const localSplit = { id: Date.now(), ...newSplit };
       setSavedSplits(prev => [localSplit, ...prev]);
       setIsSaveModalOpen(false);
+      setView('splits');
       showNotification(`Saved to ${newSplitData.category}`);
     } finally {
       setIsSavingSplit(false);
@@ -473,7 +475,7 @@ export default function RentSplitter() {
             await deleteDoc(doc(db, 'users', user.uid, 'splits', id));
           } catch (err) {
             console.error('Failed to delete split from Firestore', err);
-            showNotification('Failed to delete remote split');
+            showNotification('Failed to delete remote split', 'error');
           }
         })();
       }
@@ -493,7 +495,7 @@ export default function RentSplitter() {
     const nameNorm = newProfileData.name.trim().toLowerCase();
     // Local duplicate check
     const existsLocal = profiles.some(p => p.name && p.name.trim().toLowerCase() === nameNorm);
-    if (existsLocal) return showNotification('A profile with that name already exists');
+    if (existsLocal) return showNotification('A profile with that name already exists', 'error');
 
     // Remote duplicate check
     if (user && db) {
@@ -501,7 +503,7 @@ export default function RentSplitter() {
         const profilesCol = collection(db, 'users', user.uid, 'profiles');
         const q = query(profilesCol, where('name', '==', newProfileData.name.trim()));
         const snap = await getDocs(q);
-        if (!snap.empty) return showNotification('A profile with that name already exists');
+        if (!snap.empty) return showNotification('A profile with that name already exists', 'error');
       } catch (err) {
         console.error('Failed to check remote profiles', err);
         // proceed — we don't want a remote check failure to block local save
@@ -533,7 +535,7 @@ export default function RentSplitter() {
           setProfiles(prev => prev.map(p => p.id === newProfileLocal.id ? { id: docRef.id, name: newProfileLocal.name, defaultSqFt: newProfileLocal.defaultSqFt, defaultPercentage: newProfileLocal.defaultPercentage } : p));
         } catch (err) {
           console.error('Failed to save profile to Firestore', err);
-          showNotification('Saved profile locally (remote save failed)');
+          showNotification('Saved profile locally (remote save failed)', 'error');
         }
       })();
     }
@@ -569,7 +571,7 @@ export default function RentSplitter() {
             }
           } catch (err) {
             console.error('Failed to delete profile from Firestore', err);
-            showNotification('Failed to delete remote profile');
+            showNotification('Failed to delete remote profile', 'error');
           }
         })();
       }
@@ -588,7 +590,7 @@ export default function RentSplitter() {
           await updateDoc(doc(db, 'users', user.uid, 'profiles', id), { [field]: parsedValue });
         } catch (err) {
           console.error('Failed to update profile in Firestore', err);
-          showNotification('Failed to update remote profile');
+          showNotification('Failed to update remote profile', 'error');
         }
       })();
     }
@@ -739,9 +741,9 @@ export default function RentSplitter() {
 
       {/* Notification Toast */}
       {notification && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-60 bg-rose-600 text-white px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-bounce-in ring-4 ring-rose-300/30 max-w-xl">
-          <AlertTriangle size={20} />
-          <div className="font-semibold">{notification}</div>
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-60 text-white px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-bounce-in max-w-xl ${notification.type === 'error' ? 'bg-rose-600 ring-4 ring-rose-300/30' : 'bg-emerald-600 ring-4 ring-emerald-300/30'}`}>
+          {notification.type === 'error' ? <AlertTriangle size={20} /> : <Check size={20} />}
+          <div className="font-semibold">{notification.msg}</div>
         </div>
       )}
 
