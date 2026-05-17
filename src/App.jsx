@@ -122,6 +122,7 @@ export default function RentSplitter() {
 
   // Start empty; we'll seed defaults only the first time the app runs.
   const [profiles, setProfiles] = useState([]);
+  const [groups, setGroups] = useState([]);
 
   const [notification, setNotification] = useState(null);
 
@@ -132,7 +133,7 @@ export default function RentSplitter() {
       await signOut();
       showNotification('Signed out');
     } catch (err) {
-      showNotification(err?.message || 'Sign out failed');
+      showNotification(err?.message || 'Sign out failed', 'error');
       console.error(err);
     }
   };
@@ -183,6 +184,7 @@ export default function RentSplitter() {
         if (parsed.roommates) setRoommates(parsed.roommates);
         if (parsed.savedSplits) setSavedSplits(parsed.savedSplits);
         if (parsed.profiles) setProfiles(parsed.profiles);
+        if (parsed.groups) setGroups(parsed.groups);
       } else {
         // If user has never run the app locally, seed example profiles once.
         if (!initialized) {
@@ -244,7 +246,7 @@ export default function RentSplitter() {
           }
         } catch (err) {
           console.error('Failed to load splits from Firestore', err);
-          showNotification('Failed to load saved splits');
+          showNotification('Failed to load saved splits', 'error');
           loadLocal();
         }
       };
@@ -296,6 +298,17 @@ export default function RentSplitter() {
         }
       };
       fetchProfiles();
+
+      const fetchGroups = async () => {
+        try {
+          const groupsCol = collection(db, 'users', user.uid, 'groups');
+          const snap = await getDocs(groupsCol);
+          setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        } catch (err) {
+          console.error('Failed to load groups from Firestore', err);
+        }
+      };
+      fetchGroups();
     } else {
       loadLocal();
     }
@@ -306,17 +319,18 @@ export default function RentSplitter() {
       expenses,
       roommates,
       savedSplits,
-      profiles
+      profiles,
+      groups
     }));
   };
 
   // Auto-save whenever critical data changes
   useEffect(() => {
     saveToLocal();
-  }, [expenses, roommates, savedSplits, profiles]);
+  }, [expenses, roommates, savedSplits, profiles, groups]);
 
-  const showNotification = (msg) => {
-    setNotification(msg);
+  const showNotification = (msg, type = 'success') => {
+    setNotification({ msg, type });
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -412,7 +426,9 @@ export default function RentSplitter() {
       date: new Date().toLocaleDateString(),
       expenses,
       roommates,
-      currency
+      currency,
+      status: 'pending',
+      total: expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
     };
 
     setIsSavingSplit(true);
@@ -438,7 +454,7 @@ export default function RentSplitter() {
           return;
         } catch (err) {
           console.error('Failed to save split to Firestore', err);
-          showNotification('Failed to save split remotely — saved locally instead');
+          showNotification('Failed to save split remotely — saved locally instead', 'error');
           // fallthrough to local save
         }
       } else {
@@ -578,6 +594,66 @@ export default function RentSplitter() {
       }
       showNotification("Profile deleted");
     });
+  };
+
+  // 4. Group Actions
+  const createGroup = async (name, members) => {
+    const newGroup = { name, members };
+    if (user && db) {
+      try {
+        const groupsCol = collection(db, 'users', user.uid, 'groups');
+        const docRef = await addDoc(groupsCol, newGroup);
+        setGroups(prev => [...prev, { id: docRef.id, ...newGroup }]);
+        showNotification(`Group "${name}" created`);
+        return;
+      } catch (err) {
+        console.error('Failed to create group', err);
+        showNotification('Failed to save group', 'error');
+        return;
+      }
+    }
+    setGroups(prev => [...prev, { id: Date.now(), ...newGroup }]);
+    showNotification(`Group "${name}" created`);
+  };
+
+  const deleteGroup = (id) => {
+    setGroups(prev => prev.filter(g => g.id !== id));
+    if (user && db && typeof id === 'string') {
+      (async () => {
+        try {
+          await deleteDoc(doc(db, 'users', user.uid, 'groups', id));
+        } catch (err) {
+          console.error('Failed to delete group', err);
+        }
+      })();
+    }
+    showNotification('Group deleted');
+  };
+
+  const loadGroup = (group) => {
+    setRoommates(group.members.map((m, i) => ({
+      id: i + 1,
+      name: m.name,
+      sqFt: m.sqFt || 100,
+      percentage: m.percentage || 0,
+      manualAdjustment: 0
+    })));
+    setView('calculator');
+    showNotification(`Loaded group "${group.name}"`);
+  };
+
+  const toggleSplitStatus = async (splitId) => {
+    const split = savedSplits.find(s => s.id === splitId);
+    if (!split) return;
+    const newStatus = split.status === 'settled' ? 'pending' : 'settled';
+    setSavedSplits(prev => prev.map(s => s.id === splitId ? { ...s, status: newStatus } : s));
+    if (user && db && typeof splitId === 'string') {
+      try {
+        await updateDoc(doc(db, 'users', user.uid, 'splits', splitId), { status: newStatus });
+      } catch (err) {
+        console.error('Failed to update split status', err);
+      }
+    }
   };
 
   const updateProfile = (id, field, value) => {
@@ -739,10 +815,10 @@ export default function RentSplitter() {
         <div className="max-w-5xl mx-auto space-y-8">
 
         {/* --- VIEW: DASHBOARD --- */}
-        {view === 'dashboard' && <Dashboard savedSplits={savedSplits} onNavigate={setView} />}
+        {view === 'dashboard' && <Dashboard savedSplits={savedSplits} groups={groups} onNavigate={setView} onToggleStatus={toggleSplitStatus} />}
 
         {/* --- VIEW: GROUPS --- */}
-        {view === 'groups' && <Groups />}
+        {view === 'groups' && <Groups groups={groups} onCreate={createGroup} onDelete={deleteGroup} onLoad={loadGroup} />}
 
         {/* --- VIEW: CALCULATOR (New Split) --- */}
         {view === 'calculator' && (
