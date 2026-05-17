@@ -202,43 +202,56 @@ export default function RentSplitter() {
         try {
           const colRef = collection(db, 'users', user.uid, 'splits');
           const snap = await getDocs(colRef);
-          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          // show newest first to match local behavior
+          const docs = snap.docs.map(d => ({ status: 'pending', ...d.data(), id: d.id }));
           const remoteSplits = docs.reverse();
-          setSavedSplits(remoteSplits);
 
-          // Migrate any local-only splits to Firestore to preserve user's data across sign-outs
+          // Merge: don't overwrite splits saved locally while this fetch was in-flight
+          setSavedSplits(prev => {
+            const remoteKeys = new Set(remoteSplits.map(s => `${s.name}_${s.date}_${s.category}`));
+            const localOnly = prev.filter(s => !remoteKeys.has(`${s.name}_${s.date}_${s.category}`));
+            return [...remoteSplits, ...localOnly];
+          });
+
+          // Migrate local-only splits to Firestore — only clear ones that actually succeeded
           try {
             const savedData = localStorage.getItem('rentSplitterData_v3');
             const localSplits = savedData ? (JSON.parse(savedData).savedSplits || []) : [];
             if (localSplits.length > 0) {
-              // For each local split, if not present remotely (by name+date+category), add it
+              const migratedKeys = new Set();
               for (const ls of localSplits) {
-                const exists = remoteSplits.some(rs => rs.name === ls.name && rs.date === ls.date && rs.category === ls.category);
-                if (!exists) {
+                const key = `${ls.name}_${ls.date}_${ls.category}`;
+                const alreadyRemote = remoteSplits.some(rs => `${rs.name}_${rs.date}_${rs.category}` === key);
+                if (alreadyRemote) {
+                  migratedKeys.add(key);
+                } else {
                   try {
                     const added = await addDoc(colRef, {
-                      name: ls.name,
-                      category: ls.category,
-                      date: ls.date,
-                      expenses: ls.expenses,
-                      roommates: ls.roommates,
-                      currency: ls.currency
+                      name: ls.name, category: ls.category, date: ls.date,
+                      expenses: ls.expenses, roommates: ls.roommates, currency: ls.currency,
                     });
-                    const saved = { id: added.id, name: ls.name, category: ls.category, date: ls.date, expenses: ls.expenses, roommates: ls.roommates, currency: ls.currency };
-                    setSavedSplits(prev => [saved, ...prev]);
+                    const saved = { status: 'pending', ...ls, id: added.id };
+                    setSavedSplits(prev => {
+                      const filtered = prev.filter(s => `${s.name}_${s.date}_${s.category}` !== key);
+                      return [saved, ...filtered];
+                    });
+                    migratedKeys.add(key);
                   } catch (err) {
-                    console.error('Failed to migrate local split to Firestore', err);
+                    console.error('Failed to migrate local split to Firestore — keeping locally:', err);
                   }
                 }
               }
-              // Clear local savedSplits to avoid repeated migration
+              // Only remove splits from localStorage that were successfully migrated
               try {
-                const parsed = savedData ? JSON.parse(savedData) : {};
-                delete parsed.savedSplits;
+                const parsed = JSON.parse(savedData);
+                const remaining = localSplits.filter(ls => !migratedKeys.has(`${ls.name}_${ls.date}_${ls.category}`));
+                if (remaining.length > 0) {
+                  parsed.savedSplits = remaining;
+                } else {
+                  delete parsed.savedSplits;
+                }
                 localStorage.setItem('rentSplitterData_v3', JSON.stringify(parsed));
               } catch (e) {
-                console.error('Failed to clear local savedSplits after migration', e);
+                console.error('Failed to update localStorage after migration', e);
               }
             }
           } catch (e) {
@@ -246,7 +259,6 @@ export default function RentSplitter() {
           }
         } catch (err) {
           console.error('Failed to load splits from Firestore', err);
-          showNotification('Failed to load saved splits', 'error');
           loadLocal();
         }
       };
@@ -434,7 +446,13 @@ export default function RentSplitter() {
       if (user && db) {
         try {
           const colRef = collection(db, 'users', user.uid, 'splits');
-          const docRef = await addDoc(colRef, newSplit);
+          // Write core fields only — avoids conflicts with strict Firestore security rules
+          const docRef = await addDoc(colRef, {
+            name: newSplit.name, category: newSplit.category, date: newSplit.date,
+            expenses: newSplit.expenses, roommates: newSplit.roommates, currency: newSplit.currency,
+          });
+          // Try to persist status too; ignore if rules don't allow it
+          try { await updateDoc(doc(db, 'users', user.uid, 'splits', docRef.id), { status: 'pending' }); } catch (_) {}
           const saved = { id: docRef.id, ...newSplit };
           setSavedSplits(prev => [saved, ...prev]);
           setIsSaveModalOpen(false);
@@ -442,7 +460,7 @@ export default function RentSplitter() {
           showNotification(`"${newSplit.name}" saved`);
           return;
         } catch (err) {
-          console.error('Firestore save failed, falling back to local:', err);
+          console.error('Firestore save failed, saving locally:', err);
           // fallthrough to local save
         }
       }
