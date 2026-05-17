@@ -3,11 +3,14 @@ import { Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider.jsx';
 import { signOut, db } from './firebase.js';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, where } from 'firebase/firestore';
-import { 
-  Users, 
-  DollarSign, 
-  Maximize, 
-  Percent, 
+import SideNav from './components/SideNav.jsx';
+import Dashboard from './pages/Dashboard.jsx';
+import Groups from './pages/Groups.jsx';
+import {
+  Users,
+  DollarSign,
+  Maximize,
+  Percent,
   Calculator, 
   Plus, 
   Trash2, 
@@ -91,7 +94,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 
 export default function RentSplitter() {
   // --- State Management ---
-  const [view, setView] = useState('calculator'); // 'calculator', 'splits', 'profiles'
+  const [view, setView] = useState('dashboard'); // 'dashboard','calculator','splits','groups','settings'
   const [currency, setCurrency] = useState('$');
   const [isMobile, setIsMobile] = useState(false);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState('All');
@@ -712,52 +715,54 @@ export default function RentSplitter() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-900 pb-20 flex flex-col">
-      
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
-          <div className={`mx-auto px-4 py-3 flex items-center justify-between transition-all duration-300 ${isMobile ? 'max-w-[375px]' : 'max-w-7xl'}`}>
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg">
-              <Calculator className="text-white" size={isMobile ? 18 : 24} />
-            </div>
-            <div>
-                <h1 className={`${isMobile ? 'text-base' : 'text-xl'} font-bold text-slate-900`}>FairShare</h1>
-            </div>
-          </div>
+    <div className="min-h-screen bg-surface flex">
 
-           <div className="flex items-center gap-2">
-             <div className="hidden md:flex bg-slate-100 p-1 rounded-lg">
-               <button onClick={() => setIsMobile(false)} className={`p-1.5 rounded-md ${!isMobile ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}><Monitor size={16} /></button>
-               <button onClick={() => setIsMobile(true)} className={`p-1.5 rounded-md ${isMobile ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}><Smartphone size={16} /></button>
-             </div>
-             {/* Auth buttons */}
-             <AuthButtons />
-           </div>
-        </div>
-      </header>
+      {/* Side Navigation */}
+      <SideNav view={view} onNavigate={(v) => setView(v === 'splits' ? 'splits' : v)} />
 
       {/* Notification Toast */}
       {notification && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-60 bg-rose-600 text-white px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-bounce-in ring-4 ring-rose-300/30 max-w-xl">
-          <AlertTriangle size={20} />
-          <div className="font-semibold">{notification}</div>
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 max-w-md font-semibold text-sm
+          ${notification.type === 'error' ? 'bg-error' : 'bg-primary'}`}>
+          {notification.type === 'error' ? <AlertTriangle size={18} /> : <Check size={18} />}
+          {notification.msg}
         </div>
       )}
 
-      <main className={`mx-auto px-4 py-6 space-y-6 transition-all duration-300 ease-in-out ${isMobile ? 'max-w-[375px] bg-white border-x-8 border-slate-900 min-h-[800px] shadow-2xl rounded-b-[2rem]' : 'max-w-7xl w-full'}`}>
-        
-        {renderTabs()}
+      {/* Top-right auth buttons */}
+      <div className="fixed top-4 right-6 z-40">
+        <AuthButtons />
+      </div>
 
-        {/* --- VIEW: CALCULATOR --- */}
+      {/* Main content area */}
+      <main className="flex-1 ml-64 min-h-screen p-10">
+        <div className="max-w-5xl mx-auto space-y-8">
+
+        {/* --- VIEW: DASHBOARD --- */}
+        {view === 'dashboard' && <Dashboard savedSplits={savedSplits} onNavigate={setView} />}
+
+        {/* --- VIEW: GROUPS --- */}
+        {view === 'groups' && <Groups />}
+
+        {/* --- VIEW: CALCULATOR (New Split) --- */}
         {view === 'calculator' && (
           <div className="animate-in fade-in duration-300">
-             
-             {/* Toolbar */}
-             <div className="flex justify-end gap-2 mb-4">
-                <Button variant="ghost" onClick={resetData} icon={RotateCcw} size="small" className="text-slate-500">Reset</Button>
-                <Button variant="secondary" onClick={openSaveModal} icon={Save} size="small">Save Split</Button>
-             </div>
+
+            {/* Page header */}
+            <div className="flex justify-between items-end mb-8">
+              <div>
+                <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight leading-none">New Split</h1>
+                <p className="text-on-surface-variant mt-2">Configure expenses and roommates, then save to your archive.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={resetData} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-on-surface-variant border border-outline-variant hover:bg-surface-container text-sm font-semibold transition-all">
+                  <RotateCcw size={15} /> Reset
+                </button>
+                <button onClick={openSaveModal} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all">
+                  <Save size={15} /> Save Split
+                </button>
+              </div>
+            </div>
 
             {/* Layout: Grid with stretch alignment */}
             <div className={`flex flex-col items-stretch ${isMobile ? 'gap-2' : 'gap-8'}`} style={{ flexDirection: isMobile ? 'column' : 'row' }}>
@@ -1021,25 +1026,28 @@ export default function RentSplitter() {
         {/* --- VIEW: MY SPLITS (ARCHIVE) --- */}
         {view === 'splits' && (
           <div className="animate-in fade-in duration-300">
-            <Card className="p-6">
-               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                 <div>
-                   <h2 className="text-xl font-bold text-slate-900">My Saved Splits</h2>
-                   <p className="text-sm text-slate-500">Archive by category</p>
-                 </div>
-                 <Button onClick={openSaveModal} icon={Plus}>Save Current</Button>
-               </div>
+            {/* Page header */}
+            <div className="flex justify-between items-end mb-8">
+              <div>
+                <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight leading-none">My Splits</h1>
+                <p className="text-on-surface-variant mt-2">Your saved expense archives by category.</p>
+              </div>
+              <button onClick={openSaveModal} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all">
+                <Plus size={15} /> Save Current
+              </button>
+            </div>
 
+            <Card className="p-6">
                {/* Category Tabs */}
                <div className="flex flex-wrap gap-2 mb-6">
                  {['All', 'Rent', 'Food', 'Travel', 'Other'].map(cat => (
                    <button
                      key={cat}
                      onClick={() => setActiveCategoryFilter(cat)}
-                     className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
-                       activeCategoryFilter === cat 
-                         ? 'bg-indigo-600 text-white border-indigo-600' 
-                         : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                     className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                       activeCategoryFilter === cat
+                         ? 'bg-primary text-white'
+                         : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
                      }`}
                    >
                      {cat}
@@ -1089,16 +1097,24 @@ export default function RentSplitter() {
           </div>
         )}
 
-        {/* --- VIEW: PROFILES --- */}
-        {view === 'profiles' && (
+        {/* --- VIEW: SETTINGS (was Profiles) --- */}
+        {(view === 'settings' || view === 'profiles') && (
           <div className="animate-in fade-in duration-300">
+            <div className="flex justify-between items-end mb-8">
+              <div>
+                <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight leading-none">Settings</h1>
+                <p className="text-on-surface-variant mt-2">Manage your saved roommate profiles.</p>
+              </div>
+              <button onClick={openAddProfileModal} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all">
+                <Plus size={15} /> Add Profile
+              </button>
+            </div>
              <Card className="p-6">
                <div className="flex justify-between items-center mb-6">
                  <div>
-                   <h2 className="text-xl font-bold text-slate-900">People Profiles</h2>
-                   <p className="text-sm text-slate-500">Manage pre-set roommates for quick addition</p>
+                   <h2 className="text-xl font-bold text-on-surface font-headline">People Profiles</h2>
+                   <p className="text-sm text-on-surface-variant">Pre-set roommates for quick addition to splits</p>
                  </div>
-                 <Button onClick={openAddProfileModal} icon={Plus}>Add Profile</Button>
                </div>
 
                <div className="divide-y divide-slate-100">
@@ -1151,6 +1167,7 @@ export default function RentSplitter() {
           </div>
         )}
 
+        </div>
       </main>
 
       {/* --- MODALS --- */}
