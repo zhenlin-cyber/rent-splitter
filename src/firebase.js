@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
+import { initializeAuth, browserSessionPersistence, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -26,7 +26,7 @@ if (hasApiKey) {
     }
 
     // Initialize services inside try/catch to surface configuration errors
-    auth = getAuth(app);
+    auth = initializeAuth(app, { persistence: browserSessionPersistence });
     db = getFirestore(app);
   } catch (err) {
     console.error('[firebase] initialization error:', err);
