@@ -327,7 +327,34 @@ export default function RentSplitter() {
       };
       fetchGroups();
     } else {
-      loadLocal();
+      // Logged out: clear account-specific data from state and localStorage,
+      // but restore calculator preferences (expenses, roommates, profiles).
+      setSavedSplits([]);
+      setGroups([]);
+      try {
+        const raw = localStorage.getItem('rentSplitterData_v3');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.expenses) setExpenses(parsed.expenses);
+          if (parsed.roommates) setRoommates(parsed.roommates);
+          if (parsed.profiles) setProfiles(parsed.profiles);
+          // Strip account data so it doesn't leak back in on next loadLocal call
+          if (parsed.savedSplits || parsed.groups) {
+            delete parsed.savedSplits;
+            delete parsed.groups;
+            localStorage.setItem('rentSplitterData_v3', JSON.stringify(parsed));
+          }
+        } else {
+          const initialized = localStorage.getItem('rentSplitterData_initialized_v3');
+          if (!initialized) {
+            setProfiles(DEFAULT_PROFILES);
+            localStorage.setItem('rentSplitterData_v3', JSON.stringify({ profiles: DEFAULT_PROFILES }));
+            localStorage.setItem('rentSplitterData_initialized_v3', 'true');
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load local preferences on sign-out', e);
+      }
     }
   }, [user]);
 
