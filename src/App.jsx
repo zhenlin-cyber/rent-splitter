@@ -412,16 +412,14 @@ export default function RentSplitter() {
   };
 
   const confirmSaveSplit = async () => {
-    console.log('confirmSaveSplit called', { user, db, newSplitData });
-    if (!newSplitData.name.trim()) return showNotification('Please enter a split name');
+    if (!newSplitData.name.trim()) return showNotification('Please enter a split name', 'error');
 
     const nameNorm = newSplitData.name.trim().toLowerCase();
-    // Local duplicate check
     const existsLocal = savedSplits.some(s => s.name && s.name.trim().toLowerCase() === nameNorm);
-    if (existsLocal) return showNotification('A split with that name already exists');
+    if (existsLocal) return showNotification('A split with that name already exists', 'error');
 
     const newSplit = {
-      name: newSplitData.name,
+      name: newSplitData.name.trim(),
       category: newSplitData.category,
       date: new Date().toLocaleDateString(),
       expenses,
@@ -433,39 +431,28 @@ export default function RentSplitter() {
 
     setIsSavingSplit(true);
     try {
-      // If user is signed in and Firestore available, persist there (check remote duplicates first)
       if (user && db) {
         try {
           const colRef = collection(db, 'users', user.uid, 'splits');
-          const q = query(colRef, where('name', '==', newSplitData.name.trim()));
-          const snap = await getDocs(q);
-          if (!snap.empty) {
-            setIsSavingSplit(false);
-            return showNotification('A split with that name already exists');
-          }
-
-          console.log('attempting remote save to Firestore', { uid: user.uid });
           const docRef = await addDoc(colRef, newSplit);
-          console.log('remote save success', { id: docRef.id });
           const saved = { id: docRef.id, ...newSplit };
           setSavedSplits(prev => [saved, ...prev]);
           setIsSaveModalOpen(false);
-          showNotification(`Saved to ${newSplitData.category}`);
+          setView('splits');
+          showNotification(`"${newSplit.name}" saved`);
           return;
         } catch (err) {
-          console.error('Failed to save split to Firestore', err);
-          showNotification('Failed to save split remotely — saved locally instead', 'error');
+          console.error('Firestore save failed, falling back to local:', err);
           // fallthrough to local save
         }
-      } else {
-        console.log('remote save skipped — user or db missing', { userPresent: !!user, dbPresent: !!db });
       }
 
-      // Fallback: save locally
+      // Local save (no auth, or Firestore failed)
       const localSplit = { id: Date.now(), ...newSplit };
       setSavedSplits(prev => [localSplit, ...prev]);
       setIsSaveModalOpen(false);
-      showNotification(`Saved to ${newSplitData.category}`);
+      setView('splits');
+      showNotification(`"${newSplit.name}" saved`);
     } finally {
       setIsSavingSplit(false);
     }
