@@ -430,6 +430,8 @@ export default function RentSplitter() {
     const existsLocal = savedSplits.some(s => s.name && s.name.trim().toLowerCase() === nameNorm);
     if (existsLocal) return showNotification('A split with that name already exists', 'error');
 
+    if (isSavingSplit) return;
+
     const newSplit = {
       name: newSplitData.name.trim(),
       category: newSplitData.category,
@@ -441,38 +443,28 @@ export default function RentSplitter() {
       total: expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0)
     };
 
-    setIsSavingSplit(true);
-    try {
-      if (user && db) {
-        try {
-          const colRef = collection(db, 'users', user.uid, 'splits');
-          // Write core fields only — avoids conflicts with strict Firestore security rules
-          const docRef = await addDoc(colRef, {
-            name: newSplit.name, category: newSplit.category, date: newSplit.date,
-            expenses: newSplit.expenses, roommates: newSplit.roommates, currency: newSplit.currency,
-          });
-          // Try to persist status too; ignore if rules don't allow it
-          try { await updateDoc(doc(db, 'users', user.uid, 'splits', docRef.id), { status: 'pending' }); } catch (_) {}
-          const saved = { id: docRef.id, ...newSplit };
-          setSavedSplits(prev => [saved, ...prev]);
-          setIsSaveModalOpen(false);
-          setView('splits');
-          showNotification(`"${newSplit.name}" saved`);
-          return;
-        } catch (err) {
-          console.error('Firestore save failed, saving locally:', err);
-          // fallthrough to local save
-        }
-      }
+    // 1. Save locally immediately — always works, user sees result right away
+    const localId = Date.now();
+    setSavedSplits(prev => [{ id: localId, ...newSplit }, ...prev]);
+    setIsSaveModalOpen(false);
+    setView('splits');
+    showNotification(`"${newSplit.name}" saved`);
 
-      // Local save (no auth, or Firestore failed)
-      const localSplit = { id: Date.now(), ...newSplit };
-      setSavedSplits(prev => [localSplit, ...prev]);
-      setIsSaveModalOpen(false);
-      setView('splits');
-      showNotification(`"${newSplit.name}" saved`);
-    } finally {
-      setIsSavingSplit(false);
+    // 2. Background-sync to Firestore — replace temp ID with real ID on success
+    if (user && db) {
+      setIsSavingSplit(true);
+      try {
+        const colRef = collection(db, 'users', user.uid, 'splits');
+        const docRef = await addDoc(colRef, {
+          name: newSplit.name, category: newSplit.category, date: newSplit.date,
+          expenses: newSplit.expenses, roommates: newSplit.roommates, currency: newSplit.currency,
+        });
+        setSavedSplits(prev => prev.map(s => s.id === localId ? { ...s, id: docRef.id } : s));
+      } catch (err) {
+        console.error('Firestore sync failed (split kept locally):', err);
+      } finally {
+        setIsSavingSplit(false);
+      }
     }
   };
 
