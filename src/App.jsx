@@ -198,6 +198,11 @@ export default function RentSplitter() {
 
     // If user is signed in and Firestore `db` is available, load splits from Firestore
     if (user && db) {
+      // Always seed state from localStorage first so the Firestore merge has something
+      // to work with — without this, navigating to /login and back remounts App with
+      // empty initial state, and prev=[] in the merge causes local splits to be lost.
+      loadLocal();
+
       const fetchSplits = async () => {
         try {
           const colRef = collection(db, 'users', user.uid, 'splits');
