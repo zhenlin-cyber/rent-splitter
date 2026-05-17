@@ -1,5 +1,5 @@
-import { initializeApp, getApps } from 'firebase/app';
-import { initializeAuth, browserSessionPersistence, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeAuth, getAuth, browserSessionPersistence, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -21,23 +21,21 @@ if (hasApiKey) {
   try {
     if (!getApps().length) {
       app = initializeApp(firebaseConfig);
+      // First initialization: set session persistence explicitly
+      auth = initializeAuth(app, { persistence: browserSessionPersistence });
     } else {
-      app = getApps()[0];
+      // App already initialized (e.g. HMR) — reuse existing instances to avoid
+      // "auth/already-initialized" error from calling initializeAuth twice
+      app = getApp();
+      auth = getAuth(app);
     }
-
-    // Initialize services inside try/catch to surface configuration errors
-    auth = initializeAuth(app, { persistence: browserSessionPersistence });
     db = getFirestore(app);
   } catch (err) {
     console.error('[firebase] initialization error:', err);
-    // If auth initialization fails (e.g., auth/configuration-not-found), keep auth/db null
     auth = null;
     db = null;
   }
 } else {
-  // Avoid throwing during app startup when environment vars are missing (e.g., local dev without .env)
-  // Consumers should check for `auth`/`db` being null and handle accordingly.
-  // Provide stub functions that reject with a helpful message.
   console.warn('[firebase] VITE_FIREBASE_API_KEY not set — Firebase will not be initialized. Auth functions will reject.');
 }
 

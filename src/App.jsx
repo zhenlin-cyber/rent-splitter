@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider.jsx';
-import { signOut, db } from './firebase.js';
+import { signOut, db, auth } from './firebase.js';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, where } from 'firebase/firestore';
 import SideNav from './components/SideNav.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -484,6 +484,7 @@ export default function RentSplitter() {
         setSavedSplits(prev => prev.map(s => s.id === localId ? { ...s, id: docRef.id } : s));
       } catch (err) {
         console.error('Firestore sync failed (split kept locally):', err);
+        showNotification('Split saved locally — cloud sync failed', 'error');
       } finally {
         setIsSavingSplit(false);
       }
@@ -829,6 +830,14 @@ export default function RentSplitter() {
         <AuthButtons />
       </div>
 
+      {/* Firebase config warning — shown when Firestore is unavailable */}
+      {!db && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-800 text-xs font-semibold px-4 py-2 rounded-xl shadow-md">
+          <AlertTriangle size={14} />
+          Firebase not configured — splits will only be saved locally
+        </div>
+      )}
+
       {/* Main content area */}
       <main className="flex-1 ml-64 min-h-screen p-10">
         <div className="max-w-5xl mx-auto space-y-8">
@@ -1170,7 +1179,12 @@ export default function RentSplitter() {
                                           <div className={`p-1.5 rounded-md ${getCategoryColor(category)}`}>
                                               {getCategoryIcon(category)}
                                           </div>
-                                          <h3 className="font-bold text-slate-800">{split.name}</h3>
+                                          <div>
+                                            <h3 className="font-bold text-slate-800">{split.name}</h3>
+                                            {typeof split.id === 'number' && (
+                                              <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">local only</span>
+                                            )}
+                                          </div>
                                       </div>
                                       <button onClick={() => deleteSplit(split.id)} className="text-slate-300 hover:text-rose-500">
                                           <Trash2 size={16} />
