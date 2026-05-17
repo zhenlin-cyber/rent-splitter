@@ -182,9 +182,16 @@ export default function RentSplitter() {
         const parsed = JSON.parse(savedData);
         if (parsed.expenses) setExpenses(parsed.expenses);
         if (parsed.roommates) setRoommates(parsed.roommates);
-        if (parsed.savedSplits) setSavedSplits(parsed.savedSplits);
         if (parsed.profiles) setProfiles(parsed.profiles);
-        if (parsed.groups) setGroups(parsed.groups);
+        // Only restore account data if it belongs to the currently signed-in user.
+        // This prevents one user's splits from leaking into another user's session.
+        if (user && parsed.uid === user.uid) {
+          if (parsed.savedSplits?.length) setSavedSplits(parsed.savedSplits);
+          if (parsed.groups?.length) setGroups(parsed.groups);
+        } else {
+          setSavedSplits([]);
+          setGroups([]);
+        }
       } else {
         // If user has never run the app locally, seed example profiles once.
         if (!initialized) {
@@ -327,51 +334,34 @@ export default function RentSplitter() {
       };
       fetchGroups();
     } else {
-      // Logged out: clear account-specific data from state and localStorage,
-      // but restore calculator preferences (expenses, roommates, profiles).
-      setSavedSplits([]);
-      setGroups([]);
-      try {
-        const raw = localStorage.getItem('rentSplitterData_v3');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed.expenses) setExpenses(parsed.expenses);
-          if (parsed.roommates) setRoommates(parsed.roommates);
-          if (parsed.profiles) setProfiles(parsed.profiles);
-          // Strip account data so it doesn't leak back in on next loadLocal call
-          if (parsed.savedSplits || parsed.groups) {
-            delete parsed.savedSplits;
-            delete parsed.groups;
-            localStorage.setItem('rentSplitterData_v3', JSON.stringify(parsed));
-          }
-        } else {
-          const initialized = localStorage.getItem('rentSplitterData_initialized_v3');
-          if (!initialized) {
-            setProfiles(DEFAULT_PROFILES);
-            localStorage.setItem('rentSplitterData_v3', JSON.stringify({ profiles: DEFAULT_PROFILES }));
-            localStorage.setItem('rentSplitterData_initialized_v3', 'true');
-          }
-        }
-      } catch (e) {
-        console.error('Failed to load local preferences on sign-out', e);
-      }
+      // Logged out: loadLocal clears account state (uid mismatch path) and restores preferences.
+      loadLocal();
     }
   }, [user]);
 
   const saveToLocal = () => {
-    localStorage.setItem('rentSplitterData_v3', JSON.stringify({
-      expenses,
-      roommates,
-      savedSplits,
-      profiles,
-      groups
-    }));
+    // Read existing data and merge so that account data (savedSplits, groups, uid)
+    // is never overwritten during a logged-out auto-save — it stays cached as a
+    // fallback for the next login attempt by the same user.
+    let existing = {};
+    try {
+      const raw = localStorage.getItem('rentSplitterData_v3');
+      if (raw) existing = JSON.parse(raw);
+    } catch { /* ignore */ }
+
+    const data = { ...existing, expenses, roommates, profiles };
+    if (user) {
+      data.savedSplits = savedSplits;
+      data.groups = groups;
+      data.uid = user.uid;
+    }
+    localStorage.setItem('rentSplitterData_v3', JSON.stringify(data));
   };
 
-  // Auto-save whenever critical data changes
+  // Auto-save whenever critical data changes; include user so the uid tag stays current.
   useEffect(() => {
     saveToLocal();
-  }, [expenses, roommates, savedSplits, profiles, groups]);
+  }, [expenses, roommates, savedSplits, profiles, groups, user]);
 
   const showNotification = (msg, type = 'success') => {
     setNotification({ msg, type });
