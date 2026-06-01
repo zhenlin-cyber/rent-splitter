@@ -3,11 +3,6 @@ import { Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider.jsx';
 import { signOut, db, auth } from './firebase.js';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, where } from 'firebase/firestore';
-
-const fsWrite = (promise, ms = 10000) =>
-  Promise.race([promise, new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Save timed out — check your connection')), ms)
-  )]);
 import SideNav from './components/SideNav.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Groups from './pages/Groups.jsx';
@@ -42,6 +37,11 @@ import {
   CheckCheck,
   Link2
 } from 'lucide-react';
+
+const fsWrite = (promise, ms = 10000) =>
+  Promise.race([promise, new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Save timed out — check your connection')), ms)
+  )]);
 
 const Card = ({ children, className = "" }) => (
   <div className={`bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden ${className}`}>
