@@ -132,6 +132,8 @@ export default function RentSplitter() {
   const [copiedShareId, setCopiedShareId] = useState(null);
   const [editingSplitId, setEditingSplitId] = useState(null);
   const [editingSplitName, setEditingSplitName] = useState(null);
+  const [updateSaving, setUpdateSaving] = useState(false);
+  const [updateSaved, setUpdateSaved] = useState(false);
 
   const { user, loading } = useAuth();
 
@@ -513,19 +515,21 @@ export default function RentSplitter() {
   };
 
   const updateCurrentSplit = async () => {
-    if (!editingSplitId) return;
+    if (!editingSplitId || updateSaving) return;
+    setUpdateSaving(true);
     const patch = { expenses, roommates, currency, date: new Date().toLocaleDateString() };
     setSavedSplits(prev => prev.map(s => s.id === editingSplitId ? { ...s, ...patch } : s));
-    if (user && db && typeof editingSplitId === 'string') {
-      try {
+    try {
+      if (user && db && typeof editingSplitId === 'string') {
         await updateDoc(doc(db, 'users', user.uid, 'splits', editingSplitId), patch);
-        showNotification(`"${editingSplitName}" updated`);
-      } catch (err) {
-        console.error(err);
-        showNotification('Failed to save update', 'error');
       }
-    } else {
-      showNotification(`"${editingSplitName}" updated locally`);
+      setUpdateSaved(true);
+      setTimeout(() => setUpdateSaved(false), 2500);
+    } catch (err) {
+      console.error(err);
+      showNotification('Failed to save update', 'error');
+    } finally {
+      setUpdateSaving(false);
     }
   };
 
@@ -954,8 +958,21 @@ export default function RentSplitter() {
                   );
                 })()}
                 {editingSplitId && (
-                  <button onClick={updateCurrentSplit} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold shadow-md shadow-emerald-100 hover:bg-emerald-700 active:scale-[0.98] transition-all">
-                    <Check size={15} /> Update
+                  <button
+                    onClick={updateCurrentSplit}
+                    disabled={updateSaving}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold shadow-md active:scale-[0.98] transition-all duration-200 disabled:cursor-not-allowed
+                      ${updateSaved
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-emerald-50'
+                        : 'bg-emerald-600 text-white shadow-emerald-100 hover:bg-emerald-700'
+                      }`}
+                  >
+                    {updateSaving
+                      ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</>
+                      : updateSaved
+                        ? <><CheckCheck size={15} /> Saved!</>
+                        : <><Check size={15} /> Update</>
+                    }
                   </button>
                 )}
                 <button onClick={openSaveModal} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all">
