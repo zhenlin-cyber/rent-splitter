@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider.jsx';
 import { signOut, db, auth } from './firebase.js';
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc, query, where } from 'firebase/firestore';
+
+const fsWrite = (promise, ms = 10000) =>
+  Promise.race([promise, new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Save timed out — check your connection')), ms)
+  )]);
 import SideNav from './components/SideNav.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Groups from './pages/Groups.jsx';
@@ -491,10 +496,10 @@ export default function RentSplitter() {
       setIsSavingSplit(true);
       try {
         const colRef = collection(db, 'users', user.uid, 'splits');
-        const docRef = await addDoc(colRef, {
+        const docRef = await fsWrite(addDoc(colRef, {
           name: newSplit.name, category: newSplit.category, date: newSplit.date,
           expenses: newSplit.expenses, roommates: newSplit.roommates, currency: newSplit.currency,
-        });
+        }));
         setSavedSplits(prev => prev.map(s => s.id === localId ? { ...s, id: docRef.id } : s));
       } catch (err) {
         console.error('Firestore sync failed (split kept locally):', err);
@@ -524,7 +529,7 @@ export default function RentSplitter() {
     setSavedSplits(prev => prev.map(s => s.id === editingSplitId ? { ...s, ...patch } : s));
     try {
       if (user && db && typeof editingSplitId === 'string') {
-        await updateDoc(doc(db, 'users', user.uid, 'splits', editingSplitId), patch);
+        await fsWrite(updateDoc(doc(db, 'users', user.uid, 'splits', editingSplitId), patch));
       }
       setUpdateSaved(true);
       setTimeout(() => setUpdateSaved(false), 2500);
@@ -657,7 +662,7 @@ export default function RentSplitter() {
     if (user && db) {
       try {
         const groupsCol = collection(db, 'users', user.uid, 'groups');
-        const docRef = await addDoc(groupsCol, newGroup);
+        const docRef = await fsWrite(addDoc(groupsCol, newGroup));
         setGroups(prev => [...prev, { id: docRef.id, ...newGroup }]);
         showNotification(`Group "${name}" created`);
         return;
@@ -728,9 +733,9 @@ export default function RentSplitter() {
         expenses: split.expenses, roommates: split.roommates, currency: split.currency || '$',
         ownerUid: user.uid, createdAt: new Date().toISOString()
       };
-      const ref = await addDoc(collection(db, 'shared'), sharedDoc);
+      const ref = await fsWrite(addDoc(collection(db, 'shared'), sharedDoc));
       const shareId = ref.id;
-      await updateDoc(doc(db, 'users', user.uid, 'splits', split.id), { shareId });
+      await fsWrite(updateDoc(doc(db, 'users', user.uid, 'splits', split.id), { shareId }));
       setSavedSplits(prev => prev.map(s => s.id === split.id ? { ...s, shareId } : s));
       const url = `${window.location.origin}${import.meta.env.BASE_URL}shared/${shareId}`;
       try { await navigator.clipboard.writeText(url); } catch (_) {}
@@ -785,7 +790,7 @@ export default function RentSplitter() {
     setGroups(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g));
     if (user && db && typeof id === 'string') {
       try {
-        await updateDoc(doc(db, 'users', user.uid, 'groups', id), patch);
+        await fsWrite(updateDoc(doc(db, 'users', user.uid, 'groups', id), patch));
       } catch (err) {
         console.error('Failed to update group', err);
         showNotification('Failed to update group', 'error');

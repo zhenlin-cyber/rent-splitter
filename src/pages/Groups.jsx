@@ -137,22 +137,32 @@ export default function Groups({ groups = [], onCreate, onUpdate, onDelete, onLo
 
   const handleCreate = async (name, members) => {
     setCreateSaving(true);
-    await onCreate(name, members.filter(m => m.name.trim()).map(m => ({
-      name: m.name.trim(), sqFt: parseFloat(m.sqFt) || 100, percentage: parseFloat(m.percentage) || 0,
-    })));
-    setCreateSaving(false);
-    setCreateOpen(false);
+    try {
+      await onCreate(name, members.filter(m => m.name.trim()).map(m => ({
+        name: m.name.trim(), sqFt: parseFloat(m.sqFt) || 100, percentage: parseFloat(m.percentage) || 0,
+      })));
+      setCreateOpen(false);
+    } catch (err) {
+      console.error('Failed to create group:', err);
+    } finally {
+      setCreateSaving(false);
+    }
   };
 
   const handleUpdate = async (name, members) => {
     if (!editingGroup) return;
     setEditSaving(true);
-    await onUpdate(editingGroup.id, name, members.filter(m => m.name.trim()).map(m => ({
-      name: m.name.trim(), sqFt: parseFloat(m.sqFt) || 100, percentage: parseFloat(m.percentage) || 0,
-    })));
-    setEditSaving(false);
-    setEditSaved(true);
-    setTimeout(() => { setEditSaved(false); setEditingGroup(null); }, 1200);
+    try {
+      await onUpdate(editingGroup.id, name, members.filter(m => m.name.trim()).map(m => ({
+        name: m.name.trim(), sqFt: parseFloat(m.sqFt) || 100, percentage: parseFloat(m.percentage) || 0,
+      })));
+      setEditSaved(true);
+      setTimeout(() => { setEditSaved(false); setEditingGroup(null); }, 1200);
+    } catch (err) {
+      console.error('Failed to update group:', err);
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   return (
