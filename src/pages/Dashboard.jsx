@@ -1,6 +1,6 @@
 import { TrendingUp, Clock, CheckCircle, Users, Receipt, ArrowRight, CircleDollarSign } from 'lucide-react';
 
-export default function Dashboard({ savedSplits = [], groups = [], onNavigate, onToggleStatus }) {
+export default function Dashboard({ savedSplits = [], groups = [], onNavigate, onToggleStatus, onLoadSplit }) {
   const totalSplits = savedSplits.length;
   const settledCount = savedSplits.filter(s => s.status === 'settled').length;
   const pendingCount = savedSplits.filter(s => s.status !== 'settled').length;
@@ -68,20 +68,24 @@ export default function Dashboard({ savedSplits = [], groups = [], onNavigate, o
                 const amount = split.total ?? split.expenses?.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0) ?? 0;
                 const settled = split.status === 'settled';
                 return (
-                  <div key={split.id} className="bg-surface-container-lowest rounded-xl px-5 py-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                  <div
+                    key={split.id}
+                    onClick={() => onLoadSplit?.(split)}
+                    className="bg-surface-container-lowest rounded-xl px-5 py-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+                  >
                     <div className="flex items-center gap-4">
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${settled ? 'bg-primary-fixed' : 'bg-surface-container'}`}>
                         <Receipt size={16} className={settled ? 'text-primary' : 'text-on-surface-variant'} />
                       </div>
                       <div>
-                        <p className="font-semibold text-on-surface">{split.name}</p>
+                        <p className="font-semibold text-on-surface group-hover:text-primary transition-colors">{split.name}</p>
                         <p className="text-xs text-on-surface-variant mt-0.5">{split.date} · {split.category} · {split.roommates?.length ?? 0} people</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <p className="font-bold text-on-surface">{fmt(amount)}</p>
                       <button
-                        onClick={() => onToggleStatus(split.id)}
+                        onClick={(e) => { e.stopPropagation(); onToggleStatus(split.id); }}
                         className={`text-xs font-bold px-3 py-1 rounded-full transition-all ${
                           settled
                             ? 'bg-primary-fixed text-primary hover:bg-primary hover:text-white'

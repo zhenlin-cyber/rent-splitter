@@ -130,6 +130,8 @@ export default function RentSplitter() {
   const [notification, setNotification] = useState(null);
   const [shareLoading, setShareLoading] = useState(null);
   const [copiedShareId, setCopiedShareId] = useState(null);
+  const [editingSplitId, setEditingSplitId] = useState(null);
+  const [editingSplitName, setEditingSplitName] = useState(null);
 
   const { user, loading } = useAuth();
 
@@ -393,6 +395,8 @@ export default function RentSplitter() {
     requestConfirmation("Reset Calculator", "Are you sure you want to reset all data?", () => {
       setExpenses([{ id: 1, name: 'Monthly Rent', amount: 0, method: 'sqft' }]);
       setRoommates([{ id: 1, name: 'Me', sqFt: 100, percentage: 100, manualAdjustment: 0 }]);
+      setEditingSplitId(null);
+      setEditingSplitName(null);
       showNotification("Calculator reset");
     });
   };
@@ -501,9 +505,28 @@ export default function RentSplitter() {
       setExpenses(split.expenses);
       setRoommates(split.roommates);
       if (split.currency) setCurrency(split.currency);
+      setEditingSplitId(split.id);
+      setEditingSplitName(split.name);
       setView('calculator');
-      showNotification("Split loaded successfully");
+      showNotification(`"${split.name}" loaded`);
     });
+  };
+
+  const updateCurrentSplit = async () => {
+    if (!editingSplitId) return;
+    const patch = { expenses, roommates, currency, date: new Date().toLocaleDateString() };
+    setSavedSplits(prev => prev.map(s => s.id === editingSplitId ? { ...s, ...patch } : s));
+    if (user && db && typeof editingSplitId === 'string') {
+      try {
+        await updateDoc(doc(db, 'users', user.uid, 'splits', editingSplitId), patch);
+        showNotification(`"${editingSplitName}" updated`);
+      } catch (err) {
+        console.error(err);
+        showNotification('Failed to save update', 'error');
+      }
+    } else {
+      showNotification(`"${editingSplitName}" updated locally`);
+    }
   };
 
   const deleteSplit = (id) => {
@@ -882,7 +905,7 @@ export default function RentSplitter() {
         <div className="max-w-5xl mx-auto space-y-8">
 
         {/* --- VIEW: DASHBOARD --- */}
-        {view === 'dashboard' && <Dashboard savedSplits={savedSplits} groups={groups} onNavigate={setView} onToggleStatus={toggleSplitStatus} />}
+        {view === 'dashboard' && <Dashboard savedSplits={savedSplits} groups={groups} onNavigate={setView} onToggleStatus={toggleSplitStatus} onLoadSplit={loadSplit} />}
 
         {/* --- VIEW: GROUPS --- */}
         {view === 'groups' && <Groups groups={groups} onCreate={createGroup} onDelete={deleteGroup} onLoad={loadGroup} />}
@@ -894,15 +917,49 @@ export default function RentSplitter() {
             {/* Page header */}
             <div className="flex justify-between items-end mb-8">
               <div>
-                <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight leading-none">New Split</h1>
-                <p className="text-on-surface-variant mt-2">Configure expenses and roommates, then save to your archive.</p>
+                <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight leading-none">
+                  {editingSplitName ?? 'New Split'}
+                </h1>
+                <p className="text-on-surface-variant mt-2">
+                  {editingSplitId ? 'Editing saved split — update to save changes.' : 'Configure expenses and roommates, then save to your archive.'}
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={resetData} className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-on-surface-variant border border-outline-variant hover:bg-surface-container text-sm font-semibold transition-all">
                   <RotateCcw size={15} /> Reset
                 </button>
+                {editingSplitId && (() => {
+                  const activeSplit = savedSplits.find(s => s.id === editingSplitId);
+                  return (
+                    <button
+                      onClick={() => activeSplit && shareSplit(activeSplit)}
+                      disabled={shareLoading === editingSplitId || typeof editingSplitId === 'number'}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all disabled:opacity-40
+                        ${copiedShareId === editingSplitId
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                          : activeSplit?.shareId
+                            ? 'bg-primary/5 border-primary/20 text-primary hover:bg-primary/10'
+                            : 'bg-white border-outline-variant text-on-surface-variant hover:bg-surface-container'
+                        }`}
+                    >
+                      {shareLoading === editingSplitId
+                        ? <div className="w-4 h-4 border border-current border-t-transparent rounded-full animate-spin" />
+                        : copiedShareId === editingSplitId
+                          ? <><CheckCheck size={15} /> Copied</>
+                          : activeSplit?.shareId
+                            ? <><Link2 size={15} /> Copy Link</>
+                            : <><Share2 size={15} /> Share</>
+                      }
+                    </button>
+                  );
+                })()}
+                {editingSplitId && (
+                  <button onClick={updateCurrentSplit} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold shadow-md shadow-emerald-100 hover:bg-emerald-700 active:scale-[0.98] transition-all">
+                    <Check size={15} /> Update
+                  </button>
+                )}
                 <button onClick={openSaveModal} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold shadow-md shadow-primary/20 hover:bg-primary/90 active:scale-[0.98] transition-all">
-                  <Save size={15} /> Save Split
+                  <Save size={15} /> {editingSplitId ? 'Save as New' : 'Save Split'}
                 </button>
               </div>
             </div>
