@@ -659,21 +659,19 @@ export default function RentSplitter() {
   // 4. Group Actions
   const createGroup = async (name, members) => {
     const newGroup = { name, members };
+    const localId = `local_${Date.now()}`;
+    setGroups(prev => [...prev, { id: localId, ...newGroup }]);
+    showNotification(`Group "${name}" created`);
     if (user && db) {
       try {
         const groupsCol = collection(db, 'users', user.uid, 'groups');
         const docRef = await fsWrite(addDoc(groupsCol, newGroup));
-        setGroups(prev => [...prev, { id: docRef.id, ...newGroup }]);
-        showNotification(`Group "${name}" created`);
-        return;
+        setGroups(prev => prev.map(g => g.id === localId ? { ...g, id: docRef.id } : g));
       } catch (err) {
-        console.error('Failed to create group', err);
-        showNotification('Failed to save group', 'error');
-        return;
+        console.error('Failed to sync group to cloud:', err);
+        showNotification('Saved locally — cloud sync failed', 'error');
       }
     }
-    setGroups(prev => [...prev, { id: Date.now(), ...newGroup }]);
-    showNotification(`Group "${name}" created`);
   };
 
   const deleteGroup = (id) => {
