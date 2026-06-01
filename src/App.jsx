@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthProvider.jsx';
 import { signOut, db, auth } from './firebase.js';
@@ -134,6 +134,9 @@ export default function RentSplitter() {
   const [editingSplitName, setEditingSplitName] = useState(null);
   const [updateSaving, setUpdateSaving] = useState(false);
   const [updateSaved, setUpdateSaved] = useState(false);
+  const [savedProfileId, setSavedProfileId] = useState(null);
+  const profileSaveTimers = useRef({});
+  const pendingProfileUpdates = useRef({});
 
   const { user, loading } = useAuth();
 
@@ -743,19 +746,50 @@ export default function RentSplitter() {
   };
 
   const updateProfile = (id, field, value) => {
-    const parsedValue = (field === 'defaultSqFt' || field === 'defaultPercentage') ? (value === '' ? 0 : parseFloat(value)) : value;
-    setProfiles(prev => prev.map(p => p.id === id ? { ...p, [field]: parsedValue } : p));
+    const parsedValue = (field === 'defaultSqFt' || field === 'defaultPercentage')
+      ? (value === '' ? 0 : parseFloat(value))
+      : value;
 
-    // If this profile exists in Firestore (string id), persist the change remotely
-    if (user && db && typeof id === 'string') {
-      (async () => {
+    setProfiles(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      const updated = { ...p, [field]: parsedValue };
+      pendingProfileUpdates.current[id] = updated;
+      return updated;
+    }));
+
+    clearTimeout(profileSaveTimers.current[id]);
+    profileSaveTimers.current[id] = setTimeout(async () => {
+      const profile = pendingProfileUpdates.current[id];
+      if (!profile) return;
+      if (user && db && typeof id === 'string') {
         try {
-          await updateDoc(doc(db, 'users', user.uid, 'profiles', id), { [field]: parsedValue });
+          await updateDoc(doc(db, 'users', user.uid, 'profiles', id), {
+            name: profile.name,
+            defaultSqFt: profile.defaultSqFt,
+            defaultPercentage: profile.defaultPercentage,
+          });
         } catch (err) {
           console.error('Failed to update profile in Firestore', err);
-          showNotification('Failed to update remote profile');
+          showNotification('Failed to update profile', 'error');
+          return;
         }
-      })();
+      }
+      delete pendingProfileUpdates.current[id];
+      setSavedProfileId(id);
+      setTimeout(() => setSavedProfileId(prev => prev === id ? null : prev), 1500);
+    }, 600);
+  };
+
+  const updateGroup = async (id, name, members) => {
+    const patch = { name, members };
+    setGroups(prev => prev.map(g => g.id === id ? { ...g, ...patch } : g));
+    if (user && db && typeof id === 'string') {
+      try {
+        await updateDoc(doc(db, 'users', user.uid, 'groups', id), patch);
+      } catch (err) {
+        console.error('Failed to update group', err);
+        showNotification('Failed to update group', 'error');
+      }
     }
   };
 
@@ -912,7 +946,7 @@ export default function RentSplitter() {
         {view === 'dashboard' && <Dashboard savedSplits={savedSplits} groups={groups} onNavigate={setView} onToggleStatus={toggleSplitStatus} onLoadSplit={loadSplit} />}
 
         {/* --- VIEW: GROUPS --- */}
-        {view === 'groups' && <Groups groups={groups} onCreate={createGroup} onDelete={deleteGroup} onLoad={loadGroup} />}
+        {view === 'groups' && <Groups groups={groups} onCreate={createGroup} onUpdate={updateGroup} onDelete={deleteGroup} onLoad={loadGroup} />}
 
         {/* --- VIEW: CALCULATOR (New Split) --- */}
         {view === 'calculator' && (
@@ -1362,50 +1396,63 @@ export default function RentSplitter() {
                  </div>
                </div>
 
-               <div className="divide-y divide-slate-100">
+               <div className="divide-y divide-outline-variant/30">
                  {profiles.map(profile => (
-                    <div key={profile.id} className="py-4 flex flex-col sm:flex-row items-center justify-between gap-4 group">
+                    <div key={profile.id} className="py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
                        <div className="flex items-center gap-4 w-full sm:w-auto">
-                          <div className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                          <div className="h-10 w-10 rounded-full bg-primary-fixed text-primary flex items-center justify-center font-bold shrink-0">
                              {profile.name.charAt(0).toUpperCase()}
                           </div>
-                          <div>
-                             <h4 className="font-semibold text-slate-900">{profile.name}</h4>
-                             <p className="text-xs text-slate-500">
-                               Default: {profile.defaultSqFt || 100} sq ft • {profile.defaultPercentage || 0}%
-                             </p>
+                          <div className="flex-1 min-w-0">
+                             <input
+                               type="text"
+                               value={profile.name}
+                               onChange={(e) => updateProfile(profile.id, 'name', e.target.value)}
+                               className="font-semibold text-on-surface bg-transparent border-b border-transparent hover:border-outline-variant focus:border-primary focus:ring-0 outline-none px-0 w-full transition-colors text-sm"
+                             />
+                             <div className="flex items-center gap-2 mt-0.5 h-4">
+                               {savedProfileId === profile.id ? (
+                                 <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
+                                   <CheckCheck size={11} /> Saved
+                                 </span>
+                               ) : (
+                                 <p className="text-xs text-on-surface-variant">
+                                   {profile.defaultSqFt || 0} sq ft · {profile.defaultPercentage || 0}%
+                                 </p>
+                               )}
+                             </div>
                           </div>
                        </div>
-                       
-                       <div className="flex gap-2 items-center w-full sm:w-auto justify-end">
-                          <div className="flex items-center gap-2">
-                             <div className="flex flex-col items-end">
-                                <label className="text-[10px] text-slate-400 uppercase font-semibold">Sq Ft</label>
-                                <input 
-                                  type="number" 
-                                  className="w-16 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+
+                       <div className="flex gap-3 items-center w-full sm:w-auto justify-end">
+                          <div className="flex items-center gap-3">
+                             <div className="flex flex-col items-end gap-1">
+                                <label className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Sq Ft</label>
+                                <input
+                                  type="number"
+                                  className="w-20 bg-surface-container border border-outline-variant rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none"
                                   value={profile.defaultSqFt}
                                   onChange={(e) => updateProfile(profile.id, 'defaultSqFt', e.target.value)}
                                 />
                              </div>
-                             <div className="flex flex-col items-end">
-                                <label className="text-[10px] text-slate-400 uppercase font-semibold">%</label>
-                                <input 
-                                  type="number" 
-                                  className="w-16 bg-slate-50 border border-slate-200 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                             <div className="flex flex-col items-end gap-1">
+                                <label className="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Share %</label>
+                                <input
+                                  type="number"
+                                  className="w-20 bg-surface-container border border-outline-variant rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none"
                                   value={profile.defaultPercentage}
                                   onChange={(e) => updateProfile(profile.id, 'defaultPercentage', e.target.value)}
                                 />
                              </div>
                           </div>
-                          <button onClick={() => deleteProfile(profile.id)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 ml-2">
+                          <button onClick={() => deleteProfile(profile.id)} className="p-2 text-on-surface-variant/40 hover:text-error rounded-lg hover:bg-error-container/30 transition-colors">
                              <Trash2 size={18} />
                           </button>
                        </div>
                     </div>
                  ))}
                  {profiles.length === 0 && (
-                    <div className="text-center py-8 text-slate-400 italic">No profiles added yet.</div>
+                    <div className="text-center py-12 text-on-surface-variant">No profiles added yet.</div>
                  )}
                </div>
             </Card>
