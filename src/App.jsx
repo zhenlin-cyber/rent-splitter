@@ -11,10 +11,10 @@ import {
   DollarSign,
   Maximize,
   Percent,
-  Calculator, 
-  Plus, 
-  Trash2, 
-  PieChart, 
+  Calculator,
+  Plus,
+  Trash2,
+  PieChart,
   Save,
   RotateCcw,
   Check,
@@ -32,7 +32,10 @@ import {
   Plane,
   Box,
   Archive,
-  AlertTriangle
+  AlertTriangle,
+  Share2,
+  CheckCheck,
+  Link2
 } from 'lucide-react';
 
 const Card = ({ children, className = "" }) => (
@@ -125,6 +128,8 @@ export default function RentSplitter() {
   const [groups, setGroups] = useState([]);
 
   const [notification, setNotification] = useState(null);
+  const [shareLoading, setShareLoading] = useState(null);
+  const [copiedShareId, setCopiedShareId] = useState(null);
 
   const { user, loading } = useAuth();
 
@@ -676,6 +681,40 @@ export default function RentSplitter() {
     }
   };
 
+  const shareSplit = async (split) => {
+    if (!user || !db) return showNotification('Sign in to share splits', 'error');
+    if (split.shareId) {
+      const url = `${window.location.origin}${import.meta.env.BASE_URL}shared/${split.shareId}`;
+      try { await navigator.clipboard.writeText(url); } catch (_) {}
+      setCopiedShareId(split.id);
+      setTimeout(() => setCopiedShareId(null), 2500);
+      showNotification('Share link copied!');
+      return;
+    }
+    setShareLoading(split.id);
+    try {
+      const sharedDoc = {
+        name: split.name, category: split.category || 'Other', date: split.date,
+        expenses: split.expenses, roommates: split.roommates, currency: split.currency || '$',
+        ownerUid: user.uid, createdAt: new Date().toISOString()
+      };
+      const ref = await addDoc(collection(db, 'shared'), sharedDoc);
+      const shareId = ref.id;
+      await updateDoc(doc(db, 'users', user.uid, 'splits', split.id), { shareId });
+      setSavedSplits(prev => prev.map(s => s.id === split.id ? { ...s, shareId } : s));
+      const url = `${window.location.origin}${import.meta.env.BASE_URL}shared/${shareId}`;
+      try { await navigator.clipboard.writeText(url); } catch (_) {}
+      setCopiedShareId(split.id);
+      setTimeout(() => setCopiedShareId(null), 2500);
+      showNotification('Share link copied!');
+    } catch (err) {
+      console.error(err);
+      showNotification('Failed to create share link', 'error');
+    } finally {
+      setShareLoading(null);
+    }
+  };
+
   const updateProfile = (id, field, value) => {
     const parsedValue = (field === 'defaultSqFt' || field === 'defaultPercentage') ? (value === '' ? 0 : parseFloat(value)) : value;
     setProfiles(prev => prev.map(p => p.id === id ? { ...p, [field]: parsedValue } : p));
@@ -1194,7 +1233,30 @@ export default function RentSplitter() {
                                       <p>{split.date}</p>
                                       <p>{split.roommates?.length || 0} Roommates • {split.expenses?.length || 0} Expenses</p>
                                     </div>
-                                    <Button variant="secondary" onClick={() => loadSplit(split)} className="w-full text-xs" icon={ArrowRight}>Load Split</Button>
+                                    <div className="flex gap-2">
+                                      <Button variant="secondary" onClick={() => loadSplit(split)} className="flex-1 text-xs" icon={ArrowRight}>Load</Button>
+                                      <button
+                                        onClick={() => shareSplit(split)}
+                                        disabled={shareLoading === split.id || typeof split.id === 'number'}
+                                        title={typeof split.id === 'number' ? 'Syncing to cloud…' : split.shareId ? 'Copy share link' : 'Create share link'}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed
+                                          ${copiedShareId === split.id
+                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                            : split.shareId
+                                              ? 'bg-primary/5 border-primary/20 text-primary hover:bg-primary/10'
+                                              : 'bg-white border-slate-200 text-on-surface-variant hover:bg-surface-container'
+                                          }`}
+                                      >
+                                        {shareLoading === split.id
+                                          ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                                          : copiedShareId === split.id
+                                            ? <><CheckCheck size={13} /> Copied</>
+                                            : split.shareId
+                                              ? <><Link2 size={13} /> Link</>
+                                              : <><Share2 size={13} /> Share</>
+                                        }
+                                      </button>
+                                    </div>
                                 </div>
                               );
                           })}
