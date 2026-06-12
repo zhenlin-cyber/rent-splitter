@@ -98,3 +98,5 @@ const fsWrite = (promise, ms = 10000) =>
 - Auth uses `browserSessionPersistence` — users are logged out when they close the tab/browser
 - `gh` CLI installed at `~/.local/bin/gh` (not on system PATH by default; run `export PATH="$HOME/.local/bin:$PATH"`)
 - Homebrew is not installed on this machine
+- `fsWrite` is defined in `App.jsx` — must stay **after** all `import` statements or Vite build breaks
+- All Firestore writes (splits, groups, share) use local-first pattern: state updates immediately, Firestore syncs in background
